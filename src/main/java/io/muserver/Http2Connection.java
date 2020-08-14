@@ -21,7 +21,7 @@ import static io.netty.buffer.Unpooled.EMPTY_BUFFER;
 import static io.netty.buffer.Unpooled.copiedBuffer;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-final class Http2Connection extends Http2ConnectionHandler implements Http2FrameListener, HttpConnection {
+final class Http2Connection extends Http2ConnectionHandler implements Http2FrameListener, HttpConnection, ConnectionState {
     private static final Logger log = LoggerFactory.getLogger(Http2Connection.class);
 
     private final MuServerImpl server;
@@ -32,6 +32,7 @@ final class Http2Connection extends Http2ConnectionHandler implements Http2Frame
     private InetSocketAddress remoteAddress;
     private final Instant startTime = Instant.now();
     private ChannelHandlerContext nettyContext;
+    private ConnectionState.Listener connectionStateListener;
 
     Http2Connection(Http2ConnectionDecoder decoder, Http2ConnectionEncoder encoder,
                     Http2Settings initialSettings, MuServerImpl server, NettyHandlerAdapter nettyHandlerAdapter) {
@@ -54,7 +55,23 @@ final class Http2Connection extends Http2ConnectionHandler implements Http2Frame
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         server.stats.onConnectionClosed();
         server.onConnectionEnded(this);
+        if (connectionStateListener != null) {
+            connectionStateListener.onConnectionClose();
+            connectionStateListener = null;
+        }
         super.channelInactive(ctx);
+    }
+
+    @Override
+    public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+        if (connectionStateListener != null) {
+            if (ctx.channel().isWritable()) {
+                connectionStateListener.onWriteable();
+            } else {
+                connectionStateListener.onUnWriteable();
+            }
+        }
+        super.channelWritabilityChanged(ctx);
     }
 
     @Override
@@ -306,6 +323,11 @@ final class Http2Connection extends Http2ConnectionHandler implements Http2Frame
     @Override
     public Set<MuWebSocket> activeWebsockets() {
         return Collections.emptySet();
+    }
+
+    @Override
+    public void registerConnectionStateListener(ConnectionState.Listener listener) {
+        this.connectionStateListener = listener;
     }
 }
 

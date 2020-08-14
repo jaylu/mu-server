@@ -113,6 +113,58 @@ public class AsyncTest {
     }
 
     @Test
+    public void canWriteAsyncAndDoneCallbackWillDelayWhenNotWritableForHttp2() throws Exception {
+
+        AtomicInteger sendDoneCallbackCount = new AtomicInteger(0);
+        AtomicInteger receivedCount = new AtomicInteger(0);
+
+        int totalCount = 1000;
+        server = httpsServer() // test http1 only
+            .withHttp2Config(Http2ConfigBuilder.http2Enabled())
+            .withNettyServerBootstrapConfig(serverBootstrap -> serverBootstrap.childOption(NioChannelOption.SO_SNDBUF, 64 * 1024))
+            .addHandler(Method.GET, "/", (request, response, pathParams) -> {
+                response.contentType(ContentTypes.APPLICATION_OCTET_STREAM);
+                byte[] sendByte = StringUtils.randomBytes(1024);
+                NettyRequestAdapter.AsyncHandleImpl asyncHandle = (NettyRequestAdapter.AsyncHandleImpl)request.handleAsync();
+                for (int i = 0; i < totalCount; i++) {
+                    asyncHandle.write(ByteBuffer.wrap(sendByte), error -> {
+                        sendDoneCallbackCount.incrementAndGet();
+                    });
+                }
+                MuAssert.assertEventually(sendDoneCallbackCount::get, is(totalCount));
+                asyncHandle.complete();
+            })
+            .start();
+
+        try (Response resp = call(request().url(server.uri().toString()))) {
+            assertThat(resp.code(), equalTo(200));
+
+            byte[] readBytes = new byte[1024];
+
+            // http client read the first 1024 byte and then sleep,
+            // verify server done callback not exceeding 64 time, as
+            // it can't write out given the netty highWaterMark set to 64k
+            resp.body().byteStream().read(readBytes);
+            receivedCount.incrementAndGet();
+
+            Thread.sleep(3000L);
+            log.info("after sleep, sendDoneCallbackCount={}", sendDoneCallbackCount.get());
+//            assertThat(sendDoneCallbackCount.get(), lessThan(64));
+
+            Thread.sleep(3000L);
+            log.info("after sleep, sendDoneCallbackCount={}", sendDoneCallbackCount.get());
+//            assertThat(sendDoneCallbackCount.get(), lessThan(64));
+
+            // http client read the rest bytes, verify all data received
+            while (resp.body().byteStream().read(readBytes) != -1) {
+                receivedCount.incrementAndGet();
+            }
+            assertThat(sendDoneCallbackCount.get(), is(totalCount));
+            assertThat(receivedCount.get(), is(totalCount));
+        }
+    }
+
+    @Test
     public void responsesCanBeAsync() throws IOException {
 
         DatabaseListenerSimulator changeListener = new DatabaseListenerSimulator(10);
