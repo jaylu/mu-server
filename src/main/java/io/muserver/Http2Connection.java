@@ -46,6 +46,7 @@ abstract class Http2ConnectionFlowControl extends Http2ConnectionHandler impleme
             ctx.executor().execute(() -> read(ctx, streamId));
             return;
         }
+        System.out.println("read stream id=" + streamId);
         wantsToRead.put(streamId, true);
         ctx.executor().submit(() -> sendItMaybe(ctx, streamId));
     }
@@ -59,15 +60,23 @@ abstract class Http2ConnectionFlowControl extends Http2ConnectionHandler impleme
                     DataReadData msg = queue.poll();
                     if (msg != null) {
                         wantsToRead.put(streamId, false);
-                        onDataRead0(ctx, streamId, msg.data, msg.padding, msg.endOfStream);
+                        int readableBytes = msg.data.readableBytes();
+                        onDataRead0(ctx, streamId, msg.data, readableBytes, msg.padding, msg.endOfStream);
                         msg.data.release();
+
+//                        Http2Stream stream = this.connection().stream(streamId);
+//                        try {
+//                            this.connection().local().flowController().consumeBytes(stream, readableBytes + msg.padding);
+//                        } catch (Http2Exception e) {
+//                            e.printStackTrace();
+//                        }
                     }
                 }
             }
         }
     }
 
-    protected abstract void onDataRead0(ChannelHandlerContext ctx, int streamId, ByteBuf data, int padding, boolean endOfStream);
+    protected abstract void onDataRead0(ChannelHandlerContext ctx, int streamId, ByteBuf data, int readableBytes, int padding, boolean endOfStream);
 
     @Override
     public void onHeadersRead(ChannelHandlerContext ctx, int streamId, io.netty.handler.codec.http2.Http2Headers headers, int padding, boolean endOfStream) throws Http2Exception {
@@ -82,7 +91,8 @@ abstract class Http2ConnectionFlowControl extends Http2ConnectionHandler impleme
         Queue<DataReadData> buf = buffer.computeIfAbsent(streamId, integer -> new LinkedList<>());
         buf.add(new DataReadData(data.retain(), padding, endOfStream));
         sendItMaybe(ctx, streamId);
-        return size + padding;
+//        return size + padding;
+        return 0;
     }
 
     protected void cleanup() {
@@ -291,7 +301,7 @@ final class Http2Connection extends Http2ConnectionFlowControl implements HttpCo
     }
 
     @Override
-    public void onDataRead0(ChannelHandlerContext ctx, int streamId, ByteBuf data, int padding, boolean endOfStream) {
+    public void onDataRead0(ChannelHandlerContext ctx, int streamId, ByteBuf data, int readableBytes, int padding, boolean endOfStream) {
         boolean empty = data.readableBytes() == 0;
 
         HttpExchange httpExchange = exchanges.get(streamId);
@@ -307,6 +317,16 @@ final class Http2Connection extends Http2ConnectionFlowControl implements HttpCo
             data.retain();
             httpExchange.onMessage(ctx, msg, error -> {
                 data.release();
+
+                ctx.executor().execute(() -> {
+                    Http2Stream stream = this.connection().stream(streamId);
+                    try {
+                        this.connection().local().flowController().consumeBytes(stream, readableBytes + padding);
+                    } catch (Http2Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+
                 if (error != null) {
                     ctx.fireUserEventTriggered(new MuExceptionFiredEvent(httpExchange, streamId, error));
                 } else if (!endOfStream) {

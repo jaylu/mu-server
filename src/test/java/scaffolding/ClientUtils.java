@@ -34,6 +34,7 @@ public class ClientUtils {
             .followSslRedirects(false)
             .hostnameVerifier((hostname, session) -> true)
             .readTimeout(isDebug ? 180 : 20, TimeUnit.SECONDS)
+            .writeTimeout(5, TimeUnit.MINUTES)
             .sslSocketFactory(sslContextForTesting(veryTrustingTrustManager).getSocketFactory(), veryTrustingTrustManager).build();
         ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
     }
