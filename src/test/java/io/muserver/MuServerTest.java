@@ -374,9 +374,11 @@ public class MuServerTest {
 
     @Test
     public void idleTimeoutCanBeConfiguredAnd408ReturnedIfRequestUploadIsSlow() throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
         server = ServerUtils.httpsServerForTest()
             .withRequestTimeout(50, TimeUnit.MILLISECONDS)
             .addHandler(Method.POST, "/", (request, response, pathParams) -> {
+                latch.countDown();
                 String text = request.readBodyAsString();
                 response.sendChunk(text);
             })
@@ -389,6 +391,11 @@ public class MuServerTest {
 
             @Override
             public void writeTo(BufferedSink bufferedSink) throws IOException {
+                try {
+                    latch.await(2, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
                 bufferedSink.writeUtf8("Hello");
                 bufferedSink.flush();
                 try {
@@ -398,8 +405,10 @@ public class MuServerTest {
                 }
             }
         }))) {
+            String bodyString = resp.body().string();
+            System.out.println(String.format("idleTimeoutCanBeConfiguredAnd408ReturnedIfRequestUploadIsSlow status=%s, body=%s", resp.code(), bodyString));
             assertThat(resp.code(), is(408)); // HTTP1
-            assertThat(resp.body().string(), containsString("408 Request Timeout"));
+            assertThat(bodyString, containsString("408 Request Timeout"));
             if (!ClientUtils.isHttp2(resp)) {
                 assertThat(resp.header("connection"), equalTo("close"));
             }
