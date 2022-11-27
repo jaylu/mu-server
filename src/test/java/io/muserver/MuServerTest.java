@@ -393,7 +393,7 @@ public class MuServerTest {
             public void writeTo(BufferedSink bufferedSink) throws IOException {
                 try {
                     serverReceivedLatch.await(2, TimeUnit.SECONDS);
-                    Thread.sleep(80);
+                    Thread.sleep(200);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
