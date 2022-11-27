@@ -374,11 +374,11 @@ public class MuServerTest {
 
     @Test
     public void idleTimeoutCanBeConfiguredAnd408ReturnedIfRequestUploadIsSlow() throws Exception {
-        CountDownLatch latch = new CountDownLatch(1);
+        CountDownLatch serverReceivedLatch = new CountDownLatch(1);
         server = ServerUtils.httpsServerForTest()
             .withRequestTimeout(50, TimeUnit.MILLISECONDS)
             .addHandler(Method.POST, "/", (request, response, pathParams) -> {
-                latch.countDown();
+                serverReceivedLatch.countDown();
                 String text = request.readBodyAsString();
                 response.sendChunk(text);
             })
@@ -392,17 +392,13 @@ public class MuServerTest {
             @Override
             public void writeTo(BufferedSink bufferedSink) throws IOException {
                 try {
-                    latch.await(2, TimeUnit.SECONDS);
+                    serverReceivedLatch.await(2, TimeUnit.SECONDS);
+                    Thread.sleep(80);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
                 bufferedSink.writeUtf8("Hello");
                 bufferedSink.flush();
-                try {
-                    Thread.sleep(80);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
             }
         }))) {
             String bodyString = resp.body().string();
