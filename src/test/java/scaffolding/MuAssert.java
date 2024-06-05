@@ -63,7 +63,17 @@ public class MuAssert {
     }
 
     public static <T> void assertEventually(Func<T> actual, Matcher<? super T> matcher) {
+       assertEventually(actual, matcher, -1);
+    }
+
+    public static <T> void assertEventually(Func<T> actual, Matcher<? super T> matcher, long timeoutInMillis) {
+        long start = System.currentTimeMillis();
         for (int i = 0; i < 100; i++) {
+
+            if (timeoutInMillis > 0 && System.currentTimeMillis() - start > timeoutInMillis) {
+                throw new RuntimeException("Timeout waiting for " + timeoutInMillis + " milliseconds");
+            }
+
             try {
                 T val = actual.apply();
                 if (matcher.matches(val)) {

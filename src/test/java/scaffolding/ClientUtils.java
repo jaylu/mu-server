@@ -15,7 +15,10 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.lang.management.ManagementFactory;
 import java.net.URI;
+import java.security.KeyManagementException;
 import java.security.KeyStore;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -109,6 +112,8 @@ public class ClientUtils {
     public static boolean isHttp2(Response response) {
         return response.protocol().name().equalsIgnoreCase("HTTP_2");
     }
+
+
 
     public static synchronized HttpClient jettyClient() {
         if (jettyClient == null) {

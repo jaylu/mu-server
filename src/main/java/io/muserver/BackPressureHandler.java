@@ -33,7 +33,7 @@ class BackPressureHandler extends ChannelDuplexHandler {
             return;
         }
 
-        if (toSend.size() > 0) {
+        if (!toSend.isEmpty()) {
             toSend.add(new Delivery(msg, promise));
             deliverTasks(ctx, false);
             return;
@@ -56,14 +56,18 @@ class BackPressureHandler extends ChannelDuplexHandler {
 
     @Override
     public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+        System.out.println("onWritabilityChanged: " + ctx.channel().isWritable());
         super.channelWritabilityChanged(ctx);
         deliverTasks(ctx, false);
     }
 
     private void deliverTasks(ChannelHandlerContext ctx, boolean evenIfUnwriteable) {
         Delivery task;
+        boolean hasSent = false;
         while ( (evenIfUnwriteable || ctx.channel().isWritable()) && (task = toSend.poll()) != null) {
             task.send(ctx);
+            hasSent = true;
         }
+//        if (hasSent) ctx.flush();
     }
 }
