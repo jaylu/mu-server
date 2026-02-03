@@ -100,4 +100,6 @@ public interface HttpConnection {
      */
     Optional<ProxiedConnectionInfo> proxyInfo();
 
+
+
 }

@@ -3,6 +3,7 @@ package io.muserver;
 import io.muserver.handlers.ResourceType;
 import io.muserver.rest.MuRuntimeDelegate;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -13,10 +14,13 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseEncoder;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.handler.flow.FlowControlHandler;
+import io.netty.handler.ssl.SniCompletionEvent;
+import io.netty.handler.ssl.SniHandler;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.handler.traffic.GlobalTrafficShapingHandler;
+import io.netty.util.AttributeKey;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import org.slf4j.Logger;
@@ -69,6 +73,8 @@ public class MuServerBuilder {
     private WriteBufferWaterMark writeBufferWaterMark = WriteBufferWaterMark.DEFAULT;
     private UnhandledExceptionHandler unhandledExceptionHandler;
     private boolean haProxyProtocolEnabled = false;
+
+    public static final AttributeKey<String> SNI_HOSTNAME = AttributeKey.valueOf("SNI_HOSTNAME");
 
     /**
      * @param port The HTTP port to use. A value of 0 will have a random port assigned; a value of -1 will
@@ -734,11 +740,28 @@ private  boolean gracefulWait(Duration gracefulDuration, MuStatsImpl stats) thro
                         p.addLast("HAProxyMessageDecoder", haProxyMessageDecoder);
                     }
                     if (usesSsl) {
-                        SslHandler sslHandler = sslContextProvider.get().newHandler(socketChannel.alloc());
-                        SSLParameters params = sslHandler.engine().getSSLParameters();
-                        params.setUseCipherSuitesOrder(true);
-                        sslHandler.engine().setSSLParameters(params);
-                        p.addLast("ssl", sslHandler);
+
+                        p.addLast("ssl", new SniHandler(input -> sslContextProvider.get()) {
+                            @Override
+                            protected SslHandler newSslHandler(SslContext context, ByteBufAllocator allocator) {
+                                SslHandler sslHandler = super.newSslHandler(context, allocator);
+                                SSLParameters params = sslHandler.engine().getSSLParameters();
+                                params.setUseCipherSuitesOrder(true);
+                                sslHandler.engine().setSSLParameters(params);
+                                return sslHandler;
+                            }
+                        });
+
+                        p.addLast("sniCapture", new ChannelInboundHandlerAdapter() {
+                            @Override
+                            public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+                                if (evt instanceof SniCompletionEvent) {
+                                    ctx.channel().attr(SNI_HOSTNAME).set(((SniCompletionEvent)evt).hostname()); // may be null
+                                }
+                                super.userEventTriggered(ctx, evt);
+                            }
+                        });
+
                     }
                     boolean addAlpn = http2 && usesSsl;
                     if (addAlpn) {
