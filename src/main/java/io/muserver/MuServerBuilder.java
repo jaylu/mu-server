@@ -740,7 +740,6 @@ private  boolean gracefulWait(Duration gracefulDuration, MuStatsImpl stats) thro
                         p.addLast("HAProxyMessageDecoder", haProxyMessageDecoder);
                     }
                     if (usesSsl) {
-
                         p.addLast("ssl", new SniHandler(input -> sslContextProvider.get()) {
                             @Override
                             protected SslHandler newSslHandler(SslContext context, ByteBufAllocator allocator) {
@@ -751,17 +750,6 @@ private  boolean gracefulWait(Duration gracefulDuration, MuStatsImpl stats) thro
                                 return sslHandler;
                             }
                         });
-
-                        p.addLast("sniCapture", new ChannelInboundHandlerAdapter() {
-                            @Override
-                            public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
-                                if (evt instanceof SniCompletionEvent) {
-                                    ctx.channel().attr(SNI_HOSTNAME).set(((SniCompletionEvent)evt).hostname()); // may be null
-                                }
-                                super.userEventTriggered(ctx, evt);
-                            }
-                        });
-
                     }
                     boolean addAlpn = http2 && usesSsl;
                     if (addAlpn) {

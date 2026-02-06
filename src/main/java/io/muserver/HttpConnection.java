@@ -101,5 +101,6 @@ public interface HttpConnection {
     Optional<ProxiedConnectionInfo> proxyInfo();
 
 
+    Optional<String> sniHostName();
 
 }

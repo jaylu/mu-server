@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.haproxy.HAProxyMessage;
 import io.netty.handler.codec.http.*;
+import io.netty.handler.ssl.SniCompletionEvent;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
@@ -39,6 +40,7 @@ class Http1Connection extends SimpleChannelInboundHandler<Object> implements Htt
     private InetSocketAddress remoteAddress;
     private Exchange currentExchange = null;
     private ProxiedConnectionInfo proxyInfo;
+    private String sniHostName;
 
     Http1Connection(NettyHandlerAdapter nettyHandlerAdapter, MuServerImpl server, String proto) {
         this.nettyHandlerAdapter = nettyHandlerAdapter;
@@ -153,6 +155,7 @@ class Http1Connection extends SimpleChannelInboundHandler<Object> implements Htt
         response.headers().set(HeaderNames.CONTENT_LENGTH, bytes.length);
         return ctx.writeAndFlush(response);
     }
+
     private static ChannelFuture sendRedirect(ChannelHandlerContext ctx, URI location) {
         FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.valueOf(302));
         response.headers().set(HeaderNames.DATE, Mutils.toHttpDate(new Date()));
@@ -198,6 +201,8 @@ class Http1Connection extends SimpleChannelInboundHandler<Object> implements Htt
         } else if (evt instanceof MuExceptionFiredEvent) {
             MuExceptionFiredEvent mefe = (MuExceptionFiredEvent) evt;
             exceptionCaught(ctx, mefe.error);
+        } else if (evt instanceof SniCompletionEvent) {
+            this.sniHostName = ((SniCompletionEvent) evt).hostname();
         }
         super.userEventTriggered(ctx, evt);
     }
@@ -303,4 +308,8 @@ class Http1Connection extends SimpleChannelInboundHandler<Object> implements Htt
         }
     }
 
+    @Override
+    public Optional<String> sniHostName() {
+        return Optional.ofNullable(sniHostName);
+    }
 }

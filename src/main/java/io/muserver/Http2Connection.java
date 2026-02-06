@@ -6,6 +6,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.haproxy.HAProxyMessage;
 import io.netty.handler.codec.http.*;
 import io.netty.handler.codec.http2.*;
+import io.netty.handler.ssl.SniCompletionEvent;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import org.slf4j.Logger;
@@ -136,6 +137,7 @@ final class Http2Connection extends Http2ConnectionFlowControl implements HttpCo
     private final Instant startTime = Instant.now();
     private ChannelHandlerContext nettyContext;
     private ProxiedConnectionInfoImpl proxyInfo;
+    private String sniHostName;
 
     Http2Connection(Http2ConnectionDecoder decoder, Http2ConnectionEncoder encoder,
                     Http2Settings initialSettings, MuServerImpl server, NettyHandlerAdapter nettyHandlerAdapter) {
@@ -495,6 +497,8 @@ final class Http2Connection extends Http2ConnectionFlowControl implements HttpCo
                 error = Http2Exception.streamError(mefe.streamId, Http2Error.INTERNAL_ERROR, error, "Error handling %s", mefe.exchange);
             }
             onError(ctx, false, error);
+        } else if (evt instanceof SniCompletionEvent) {
+            sniHostName = ((SniCompletionEvent) evt).hostname();
         }
         super.userEventTriggered(ctx, evt);
     }
@@ -567,6 +571,11 @@ final class Http2Connection extends Http2ConnectionFlowControl implements HttpCo
     @Override
     public Optional<ProxiedConnectionInfo> proxyInfo() {
         return Optional.ofNullable(proxyInfo);
+    }
+
+    @Override
+    public Optional<String> sniHostName() {
+        return Optional.ofNullable(sniHostName);
     }
 
 }
